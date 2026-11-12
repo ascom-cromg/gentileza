@@ -2,13 +2,7 @@ import { env } from "cloudflare:workers";
 import { corporateEmail, MAILBOX, SITE_URL } from "./domain";
 export function json(value: unknown, status=200) { return Response.json(value,{status,headers:{"Cache-Control":"private, no-store",Vary:"Cookie","X-Content-Type-Options":"nosniff"}}); }
 export function store() { if (!env.DB) throw new Error("O correio está em preparação."); return env.DB; }
-export function identity(request: Request) {
-  const id=request.headers.get("oai-authenticated-user-id"), email=request.headers.get("oai-authenticated-user-email")?.toLowerCase();
-  if (!id || !email) return null;
-  let name=request.headers.get("oai-authenticated-user-full-name") || "";
-  if (request.headers.get("oai-authenticated-user-full-name-encoding")==="percent-encoded-utf-8") try { name=decodeURIComponent(name); } catch { name=""; }
-  return { id,email,name:name || email.split("@")[0],corporate:corporateEmail(email),admin:email===MAILBOX };
-}
+export { googleIdentity as identity } from "./google";
 export function canMutate(request: Request) {
   const origin=request.headers.get("origin");
   return !!origin && (origin===new URL(request.url).origin || origin===SITE_URL || process.env.NODE_ENV==="development" && origin==="http://127.0.0.1:4173") && request.headers.get("sec-fetch-site")!=="cross-site" && request.headers.get("content-type")?.includes("application/json");

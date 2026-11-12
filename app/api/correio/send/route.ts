@@ -1,9 +1,10 @@
 import { canMutate, configured, digest, identity, json, store } from "@/lib/correio/server";
 import { validateLetter, type Person } from "@/lib/correio/domain";
+import { googleConfigured } from "@/lib/correio/google";
 import { prepareTransport } from "@/lib/correio/transport";
 type Delivery={actor:string;payload_hash:string;status:string};
 export async function GET(request:Request) {
-  const user=identity(request);
+  const user=await identity(request);
   if(!user?.corporate) return json({error:"Entre com sua conta corporativa."},user?403:401);
   const id=new URL(request.url).searchParams.get("id")||"";
   if(!/^[0-9a-f-]{36}$/i.test(id)) return json({error:"Envio inválido."},400);
@@ -13,13 +14,13 @@ export async function GET(request:Request) {
   }catch{return json({error:"Não foi possível conferir o envio agora."},503);}
 }
 export async function POST(request:Request) {
-  const user=identity(request);
+  const user=await identity(request);
   if(!user?.corporate) return json({error:"Entre com sua conta @cromg.org.br para enviar uma gentileza."},user?403:401);
   if(!canMutate(request)) return json({error:"Pedido inválido."},403);
   let data;
   try { const raw=await request.text();if(raw.length>8000) return json({error:"A mensagem está muito longa."},413);data=validateLetter(JSON.parse(raw)); }
   catch(error) { return json({error:error instanceof SyntaxError?"Confira os campos da mensagem.":error instanceof Error?error.message:"Confira os campos da mensagem."},400); }
-  if(!configured()) return json({error:"O envio de e-mails ainda está sendo configurado pela equipe organizadora."},503);
+  if(data.anonymous?!configured():!googleConfigured()) return json({error:"O envio de e-mails ainda está sendo configurado pela equipe organizadora."},503);
   const db=store(),actor=await digest(user.id),payloadHash=await digest(JSON.stringify({...data,senderEmail:user.email}));
   let claimed=false;
   try {
@@ -33,7 +34,7 @@ export async function POST(request:Request) {
     }
     const recent=await db.prepare("SELECT COUNT(*) AS count FROM deliveries WHERE actor=? AND created_at>?").bind(actor,Date.now()-3600000).first<{count:number}>();
     if((recent?.count||0)>=30) return json({error:"Muitas gentilezas já saíram por aqui! Aguarde um pouco para enviar outra."},429);
-    const deliver=await prepareTransport();
+    const deliver=await prepareTransport(user,data.anonymous===true);
     const claim=existing?await db.prepare("UPDATE deliveries SET status='pending' WHERE id=? AND actor=? AND status='failed' RETURNING id").bind(data.id,actor).first():await db.prepare("INSERT INTO deliveries (id,actor,payload_hash,recipient_email,status,created_at) VALUES (?,?,?,?,'pending',?) ON CONFLICT(id) DO NOTHING RETURNING id").bind(data.id,actor,payloadHash,person.email,Date.now()).first();
     if(!claim) return json({error:"Essa mensagem já está sendo enviada. Aguarde a confirmação.",uncertain:true},409);
     claimed=true;

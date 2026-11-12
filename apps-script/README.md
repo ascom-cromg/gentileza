@@ -1,6 +1,6 @@
 # Ativar a entrega pelo Apps Script
 
-O formulário e a lista ficam no backend do site. Visitantes só conseguem buscar destinatários e enviar depois de entrar no ChatGPT com um e-mail do domínio exato `@cromg.org.br`. O Apps Script é um serviço de entrega: ele só aceita pedidos assinados pelo servidor, nunca chamadas diretas do navegador do visitante.
+O formulário e a lista ficam no backend do site. Visitantes só conseguem buscar destinatários e enviar depois de entrar com Google usando uma conta ativa do domínio exato `@cromg.org.br`. Este Apps Script é usado pelo site apenas para mensagens anônimas. O Apps Script é um serviço de entrega: ele só aceita pedidos assinados pelo servidor, nunca chamadas diretas do navegador do visitante.
 
 ## Configuração na conta da Comunicação
 
@@ -20,7 +20,7 @@ Se a política Google Workspace impedir a implantação do endpoint, a TI deve a
 ## Identificação e envio anônimo
 
 - O remetente técnico é sempre **ascom@cromg.org.br**.
-- No envio identificado, o nome é editável e a resposta vai para o endereço corporativo autenticado de quem escreveu.
+- No envio identificado, o site usa a Gmail API da conta do colaborador, com nome editável e endereço autenticado no remetente. O script mantém compatibilidade com o formato antigo, mas não é usado nesse caminho pelo site atual.
 - No envio anônimo, o HTML, o texto simples e o campo de resposta não revelam o nome nem o e-mail de quem escreveu. O serviço de entrega recebe a conta autenticada para validar o domínio, mas não a inclui no e-mail do destinatário.
 - Não há CC, BCC nem cópia para a Comunicação.
 - O Apps Script registra apenas um identificador e o estado do envio, para não repetir o mesmo e-mail. Ele não grava o texto da mensagem nem a identidade do autor nas propriedades de recibo.

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync,readdirSync } from 'node:fs';
@@ -15,11 +15,21 @@ class Statement {
   all(){return {results:sql.prepare(this.query).all(...this.args)};}
   run(){return {success:true,meta:sql.prepare(this.query).run(...this.args)};}
 }
-(globalThis as any).__correioTestEnv={DB:{prepare:(q:string)=>new Statement(q),batch:(items:Statement[])=>{sql.exec('BEGIN');try{const r=items.map(item=>item.run());sql.exec('COMMIT');return r;}catch(e){sql.exec('ROLLBACK');throw e;}}},GMAIL_CLIENT_ID:'test-id',GMAIL_CLIENT_SECRET:'test-secret',GMAIL_REFRESH_TOKEN:'test-refresh'};
+(globalThis as any).__correioTestEnv={DB:{prepare:(q:string)=>new Statement(q),batch:(items:Statement[])=>{sql.exec('BEGIN');try{const r=items.map(item=>item.run());sql.exec('COMMIT');return r;}catch(e){sql.exec('ROLLBACK');throw e;}}},GOOGLE_CLIENT_ID:'test-google-id',GOOGLE_CLIENT_SECRET:'test-google-secret',GOOGLE_TOKEN_KEY:'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',GMAIL_CLIENT_ID:'test-id',GMAIL_CLIENT_SECRET:'test-secret',GMAIL_REFRESH_TOKEN:'test-refresh'};
 const env=(globalThis as any).__correioTestEnv;
 // Dynamic imports ensure the Workers test environment exists first.
+const sessionCookies:Record<string,string>={};
+before(async()=>{
+ const {hash,seal}=await import('../lib/correio/auth-core');
+ for(const [email,subject] of [['pessoa.um@cromg.org.br','actor-one'],['outra@cromg.org.br','other']]){
+  const token=Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url'),id=await hash(token);
+  sessionCookies[email+subject]='__Host-gentileza='+token;
+  sql.prepare('INSERT INTO staff (email,name,search_text,active,updated_at) VALUES (?,?,?,1,?)').run(email,'Pessoa',email,Date.now());
+  sql.prepare('INSERT INTO google_sessions (id,subject,email,name,tokens,expires_at) VALUES (?,?,?,?,?,?)').run(id,subject,email,'Pessoa',await seal({accessToken:'fake-personal',refreshToken:'fake-refresh',expiresAt:Date.now()+3600000},env.GOOGLE_TOKEN_KEY,'tokens:'+id),Date.now()+3600000);
+ }
+});
 const handlers=()=>import('../app/api/correio/send/route');
-const request=(data:unknown,email='pessoa.um@cromg.org.br',id='actor-one',origin='https://gentileza-circula-cromg.ascom946966.chatgpt.site')=>new Request('https://gentileza-circula-cromg.ascom946966.chatgpt.site/api/correio/send',{method:'POST',headers:{'content-type':'application/json',origin,...(email?{'oai-authenticated-user-email':email,'oai-authenticated-user-id':id}:{})},body:JSON.stringify(data)});
+const request=(data:unknown,email='pessoa.um@cromg.org.br',id='actor-one',origin='https://gentileza-circula-cromg.ascom946966.chatgpt.site')=>new Request('https://gentileza-circula-cromg.ascom946966.chatgpt.site/api/correio/send',{method:'POST',headers:{'content-type':'application/json',origin,cookie:sessionCookies[email+id]||'',...(email?{'oai-authenticated-user-email':email,'oai-authenticated-user-id':id}:{})},body:JSON.stringify(data)});
 const data=()=>({id:crypto.randomUUID(),senderName:'Pessoa Um',recipientId:'pessoa.dois@cromg.org.br',message:'Obrigada pelo cuidado e pela parceria!',color:'lavender',category:'agradecimento'});
 const letter:Letter={senderName:'Pessoa Um',senderEmail:'pessoa.um@cromg.org.br',recipientName:'Pessoa Dois',recipientEmail:'pessoa.dois@cromg.org.br',message:'Seu cuidado faz a diferença!',color:'butter',category:'reconhecimento'};
 
@@ -42,7 +52,7 @@ test('HTML escapes user content, MIME has one recipient and a verified reply add
 test('send denies anonymous callers, wrong domains, cross-origin requests and unknown recipients',async()=>{
   const {POST}=await handlers();
   assert.equal((await POST(request(data(),''))).status,401);
-  assert.equal((await POST(request(data(),'a@cromg.org.br.evil.com'))).status,403);
+  assert.equal((await POST(request(data(),'a@cromg.org.br.evil.com'))).status,401);
   assert.equal((await POST(request(data(),'pessoa.um@cromg.org.br','actor-one','https://other.example'))).status,403);
   assert.equal((await POST(request(data()))).status,400);
 });
@@ -53,11 +63,11 @@ test('sending uses the stored recipient, ignores spoofed fields and deduplicates
   try{
     const {POST,GET}=await handlers();const body={...data(),recipientEmail:'evil@example.com',senderEmail:'fake@cromg.org.br'};
     assert.equal((await POST(request(body))).status,201);assert.equal((await POST(request(body))).status,200);assert.equal(sends,1);
-    assert.match(captured,/To: <pessoa.dois@cromg.org.br>/);assert.match(captured,/Reply-To: <pessoa.um@cromg.org.br>/);assert.ok(!captured.includes('evil@example.com'));
+    assert.match(captured,/From: .*<pessoa.um@cromg.org.br>/);assert.match(captured,/To: <pessoa.dois@cromg.org.br>/);assert.match(captured,/Reply-To: <pessoa.um@cromg.org.br>/);assert.ok(!captured.includes('evil@example.com'));
     assert.equal(sql.prepare('SELECT COUNT(*) AS count FROM messages').get()?.count,0);
     const columns=sql.prepare('PRAGMA table_info(deliveries)').all().map(c=>c.name);assert.ok(!columns.includes('message'));assert.ok(!columns.includes('body'));
-    const own=await GET(new Request('https://site.test/api/correio/send?id='+body.id,{headers:{'oai-authenticated-user-id':'actor-one','oai-authenticated-user-email':'pessoa.um@cromg.org.br'}}));assert.equal((await own.json() as any).status,'sent');
-    const other=await GET(new Request('https://site.test/api/correio/send?id='+body.id,{headers:{'oai-authenticated-user-id':'other','oai-authenticated-user-email':'outra@cromg.org.br'}}));assert.equal((await other.json() as any).status,'not_started');
+    const own=await GET(new Request('https://site.test/api/correio/send?id='+body.id,{headers:{cookie:sessionCookies['pessoa.um@cromg.org.bractor-one'],'oai-authenticated-user-id':'actor-one','oai-authenticated-user-email':'pessoa.um@cromg.org.br'}}));assert.equal((await own.json() as any).status,'sent');
+    const other=await GET(new Request('https://site.test/api/correio/send?id='+body.id,{headers:{cookie:sessionCookies['outra@cromg.org.brother'],'oai-authenticated-user-id':'other','oai-authenticated-user-email':'outra@cromg.org.br'}}));assert.equal((await other.json() as any).status,'not_started');
   }finally{globalThis.fetch=original;}
 });
 test('uncertain delivery never resends automatically',async()=>{
@@ -102,5 +112,5 @@ test('one-time imports are bound to the approved CSV and cannot replay over late
 test('anonymous sends still require a verified corporate identity',async()=>{
   const {POST}=await handlers();const body={...data(),anonymous:true,senderName:''};
   assert.equal((await POST(request(body,''))).status,401);
-  assert.equal((await POST(request(body,'outside@gmail.com'))).status,403);
+  assert.equal((await POST(request(body,'outside@gmail.com'))).status,401);
 });

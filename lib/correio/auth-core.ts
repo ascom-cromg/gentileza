@@ -1,0 +1,13 @@
+export const DOMAIN='cromg.org.br',SEND_SCOPE='https://www.googleapis.com/auth/gmail.send',SESSION_COOKIE='__Host-gentileza',FLOW_COOKIE='__Host-gentileza-flow',SESSION_TTL=7*86400;
+const encoder=new TextEncoder();
+export function base64url(bytes:Uint8Array){return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+export function unbase64url(value:string){return Uint8Array.from(atob(value.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));}
+export function randomToken(){return base64url(crypto.getRandomValues(new Uint8Array(32)));}
+export async function hash(value:string){return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value))));}
+async function key(secret:string){const bytes=unbase64url(secret);if(bytes.length!==32)throw new Error('Invalid encryption key');return crypto.subtle.importKey('raw',bytes,'AES-GCM',false,['encrypt','decrypt']);}
+export async function seal(value:unknown,secret:string,purpose:string){const iv=crypto.getRandomValues(new Uint8Array(12));const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:encoder.encode(purpose)},await key(secret),encoder.encode(JSON.stringify(value)));return base64url(iv)+'.'+base64url(new Uint8Array(cipher));}
+export async function unseal<T>(value:string,secret:string,purpose:string):Promise<T>{const parts=value.split('.');if(parts.length!==2||value.length>16000)throw new Error('Invalid encrypted value');const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:unbase64url(parts[0]),additionalData:encoder.encode(purpose)},await key(secret),unbase64url(parts[1]));return JSON.parse(new TextDecoder().decode(clear));}
+export function cookie(request:Request,name:string){return (request.headers.get('cookie')||'').split(';').map(p=>p.trim().split('=')).find(p=>p[0]===name)?.slice(1).join('=')||'';}
+export function cookieHeader(name:string,value:string,age:number){return `${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${age}`;}
+export function safeReturn(value:string|null){return value==='/configuracao'?value:'/#escrever';}
+export function validClaims(p:Record<string,unknown>,nonce:string,clientId:string){return (Array.isArray(p.aud)?p.aud.includes(clientId):p.aud===clientId)&&(!p.azp||p.azp===clientId)&&['https://accounts.google.com','accounts.google.com'].includes(String(p.iss))&&p.nonce===nonce&&p.email_verified===true&&p.hd===DOMAIN&&typeof p.sub==='string'&&!!p.sub&&typeof p.email==='string'&&/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@cromg\.org\.br$/i.test(p.email)&&typeof p.exp==='number'&&p.exp>Date.now()/1000;}

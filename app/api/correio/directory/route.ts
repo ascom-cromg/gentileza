@@ -2,12 +2,12 @@ import { env } from "cloudflare:workers";
 import { canMutate, configured, digest, identity, json, store } from "@/lib/correio/server";
 import { MAILBOX, normalize, parseDirectory } from "@/lib/correio/domain";
 export async function GET(request:Request) {
-  if(!identity(request)?.admin) return json({error:"Acesso restrito à equipe organizadora."},403);
+  if(!(await identity(request))?.admin) return json({error:"Acesso restrito à equipe organizadora."},403);
   try { const stats=await store().prepare("SELECT COUNT(*) AS count,MAX(updated_at) AS updatedAt FROM staff WHERE active=1").first(); return json({mailReady:configured(),mailbox:MAILBOX,stats}); }
   catch { return json({error:"A configuração está sendo preparada. Tente novamente."},503); }
 }
 export async function POST(request:Request) {
-  const admin=identity(request)?.admin;
+  const admin=(await identity(request))?.admin;
   const importLease=!!env.DIRECTORY_IMPORT_HASH && Date.parse(env.DIRECTORY_IMPORT_EXPIRES_AT||"")>Date.now();
   if((!admin&&!importLease) || !canMutate(request)) return json({error:"Acesso restrito à equipe organizadora."},403);
   let authorizedHash:string|null=null;

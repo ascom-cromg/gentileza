@@ -1,4 +1,4 @@
-import { ANONYMOUS_NAME, MAILBOX, SITE_URL, themes, topics, type Letter } from "./domain";
+import { ANONYMOUS_NAME, MAILBOX, SITE_URL, corporateEmail, themes, topics, type Letter } from "./domain";
 export const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]!));
 export function subjectFor(letter: Letter) { return letter.recipientName.split(" ")[0] + ", chegou uma gentileza para você"; }
 export function renderLetter(letter: Letter) {
@@ -14,9 +14,10 @@ export function plainLetter(letter: Letter) {
   const signature = letter.anonymous ? ANONYMOUS_NAME : letter.senderName+"\n"+letter.senderEmail;
   return "Para "+letter.recipientName+"\n\n"+letter.message+"\n\nCom carinho,\n"+signature+"\n\nGentileza circula · Correio de Gentilezas do CRO-MG\n"+SITE_URL;
 }
-export function mimeFor(letter: Letter, id: string) {
+export function mimeFor(letter: Letter, id: string, fromEmail: string = MAILBOX) {
+  if (!corporateEmail(fromEmail)) throw new Error("Remetente inválido");
   const boundary="gentileza_"+id.replace(/-/g,"");
   const text=plainLetter(letter);
-  const mime=["From: "+encodedHeader("Correio de Gentilezas · CRO-MG")+" <"+MAILBOX+">","To: <"+letter.recipientEmail+">",...(letter.anonymous ? [] : ["Reply-To: <"+letter.senderEmail+">"]),"Subject: "+encodedHeader(subjectFor(letter)),"Message-ID: <"+id+"@gentileza.cromg.org.br>","Date: "+new Date().toUTCString(),"MIME-Version: 1.0",'Content-Type: multipart/alternative; boundary="'+boundary+'"',"","--"+boundary,"Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: base64","",wrap(base64(text)),"--"+boundary,"Content-Type: text/html; charset=UTF-8","Content-Transfer-Encoding: base64","",wrap(base64(renderLetter(letter))),"--"+boundary+"--",""] .join("\r\n");
+  const mime=["From: "+encodedHeader("Correio de Gentilezas · CRO-MG")+" <"+fromEmail+">","To: <"+letter.recipientEmail+">",...(letter.anonymous ? [] : ["Reply-To: <"+letter.senderEmail+">"]),"Subject: "+encodedHeader(subjectFor(letter)),"Message-ID: <"+id+"@gentileza.cromg.org.br>","Date: "+new Date().toUTCString(),"MIME-Version: 1.0",'Content-Type: multipart/alternative; boundary="'+boundary+'"',"","--"+boundary,"Content-Type: text/plain; charset=UTF-8","Content-Transfer-Encoding: base64","",wrap(base64(text)),"--"+boundary,"Content-Type: text/html; charset=UTF-8","Content-Transfer-Encoding: base64","",wrap(base64(renderLetter(letter))),"--"+boundary+"--",""] .join("\r\n");
   return base64(mime).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 }

@@ -1,7 +1,7 @@
 import { identity, json, store } from "@/lib/correio/server";
 import { normalize } from "@/lib/correio/domain";
 export async function GET(request:Request) {
-  const user=identity(request);
+  const user=await identity(request);
   if (!user?.corporate) return json({error:"Entre com sua conta @cromg.org.br para escolher um destinatário."},user?403:401);
   const query=(new URL(request.url).searchParams.get("q")||"").trim();
   if(query.length<2 || query.length>100) return json({people:[]});

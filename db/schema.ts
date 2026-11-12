@@ -43,3 +43,6 @@ export const directoryImports = sqliteTable("directory_imports", {
   activeCount: integer("active_count").notNull(),
   importedAt: integer("imported_at").notNull(),
 });
+
+export const googleFlows = sqliteTable("google_flows", {id:text("id").primaryKey(),expiresAt:integer("expires_at").notNull()});
+export const googleSessions = sqliteTable("google_sessions", {id:text("id").primaryKey(),subject:text("subject").notNull(),email:text("email").notNull(),name:text("name").notNull(),tokens:text("tokens").notNull(),expiresAt:integer("expires_at").notNull()});
