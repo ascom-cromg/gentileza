@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1794507957198,
+      "tag": "0000_optimal_sage",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1794511610566,
+      "tag": "0001_ancient_forgotten_one",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794513034765,
+      "tag": "0002_outstanding_bucky",
+      "breakpoints": true
+    }
+  ]
+}
