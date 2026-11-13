@@ -10,7 +10,7 @@ for(const name of readdirSync('drizzle').filter(name=>name.endsWith('.sql')).sor
 class Statement {
   args:any[]=[];
   constructor(public query:string){}
-  bind(...args:any[]){this.args=args;return this;}
+  bind(...args:any[]){assert.ok(args.length<=100,"Cloudflare D1 allows at most 100 bound parameters per statement");this.args=args;return this;}
   first(){return sql.prepare(this.query).get(...this.args)??null;}
   all(){return {results:sql.prepare(this.query).all(...this.args)};}
   run(){return {success:true,meta:sql.prepare(this.query).run(...this.args)};}
@@ -113,4 +113,27 @@ test('anonymous sends still require a verified corporate identity',async()=>{
   const {POST}=await handlers();const body={...data(),anonymous:true,senderName:''};
   assert.equal((await POST(request(body,''))).status,401);
   assert.equal((await POST(request(body,'outside@gmail.com'))).status,401);
+});
+
+test('department is imported, searchable and preserved by later imports without its column',async()=>{
+  assert.equal(parseDirectory('Nome,E-mail,Departamento\nPessoa Departamento,pessoa.dept@cromg.org.br,Comunicação')[0].department,'Comunicação');
+  const {POST}=await import('../app/api/correio/directory/route');
+  const {digest}=await import('../lib/correio/server');
+  const nonce='department-import-test-long-nonce';
+  async function csvImport(csv:string){env.DIRECTORY_IMPORT_HASH=await digest(nonce+'\n'+csv);env.DIRECTORY_IMPORT_EXPIRES_AT=new Date(Date.now()+60000).toISOString();return POST(request({csv,nonce},''));}
+  try{
+    assert.equal((await csvImport('Nome,E-mail,Departamento\nPessoa Departamento,pessoa.dept@cromg.org.br,Comunicação')).status,200);
+    assert.equal(sql.prepare('SELECT department FROM staff WHERE email=?').get('pessoa.dept@cromg.org.br')?.department,'Comunicação');
+    assert.equal((await csvImport('Nome,E-mail\nPessoa Atualizada,pessoa.dept@cromg.org.br')).status,200);
+    const row=sql.prepare('SELECT department,search_text FROM staff WHERE email=?').get('pessoa.dept@cromg.org.br');
+    assert.equal(row?.department,'Comunicação');assert.match(String(row?.search_text),/comunicacao/);
+    assert.equal(sql.prepare("SELECT count(*) AS count FROM staff WHERE active=1 AND search_text LIKE ? ESCAPE '\\'").get('%comunicacao%')?.count,1);
+  }finally{delete env.DIRECTORY_IMPORT_HASH;delete env.DIRECTORY_IMPORT_EXPIRES_AT;}
+});
+
+test('department bulk imports respect the D1 bound parameter limit',async()=>{
+ const {POST}=await import('../app/api/correio/directory/route');const {digest}=await import('../lib/correio/server');
+ const csv='Nome,E-mail,Departamento\n'+Array.from({length:40},(_,i)=>'Pessoa Teste '+i+',pessoa.teste.'+i+'@cromg.org.br,Comunicação').join('\n'),nonce='bulk-department-import-long-nonce';
+ env.DIRECTORY_IMPORT_HASH=await digest(nonce+'\n'+csv);env.DIRECTORY_IMPORT_EXPIRES_AT=new Date(Date.now()+60000).toISOString();
+ try{const r=await POST(request({csv,nonce},''));assert.equal(r.status,200);assert.equal((await r.json() as any).activeCount,40);}finally{delete env.DIRECTORY_IMPORT_HASH;delete env.DIRECTORY_IMPORT_EXPIRES_AT;}
 });

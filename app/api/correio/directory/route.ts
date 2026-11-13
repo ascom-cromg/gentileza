@@ -29,11 +29,12 @@ export async function POST(request:Request) {
       const prior=await db.prepare("SELECT total,active_count AS activeCount FROM directory_imports WHERE id=?").bind(authorizedHash).first<{total:number;activeCount:number}>();
       if(prior) return json({count:prior.total,activeCount:prior.activeCount,alreadyImported:true});
     }
+    const existingDepartments = new Map((await db.prepare("SELECT email,department FROM staff").all<{email:string;department:string|null}>()).results.map(p=>[p.email,p.department]));
     const statements=authorizedHash?[db.prepare("INSERT INTO directory_imports (id,total,active_count,imported_at) VALUES (?,?,?,?)").bind(authorizedHash,people.length,activeCount,now)]:[];
     statements.push(db.prepare("UPDATE staff SET active=0"));
-    for(let i=0;i<people.length;i+=20) {
-      const chunk=people.slice(i,i+20);
-      statements.push(db.prepare("INSERT INTO staff (email,name,search_text,active,updated_at) VALUES "+chunk.map(()=>"(?,?,?,?,?)").join(",")+" ON CONFLICT(email) DO UPDATE SET name=excluded.name,search_text=excluded.search_text,active=excluded.active,updated_at=excluded.updated_at").bind(...chunk.flatMap(person=>[person.email,person.name,normalize(person.name+" "+person.email),person.active?1:0,now])));
+    for(let i=0;i<people.length;i+=16) {
+      const chunk=people.slice(i,i+16);
+      statements.push(db.prepare("INSERT INTO staff (email,name,search_text,active,updated_at,department) VALUES "+chunk.map(()=>"(?,?,?,?,?,?)").join(",")+" ON CONFLICT(email) DO UPDATE SET name=excluded.name,search_text=excluded.search_text,active=excluded.active,updated_at=excluded.updated_at,department=COALESCE(excluded.department,staff.department)").bind(...chunk.flatMap(person=>[person.email,person.name,normalize(person.name+" "+person.email+" "+(person.department??existingDepartments.get(person.email)??"")),person.active?1:0,now,person.department??null])));
     }
     await db.batch(statements);return json({count:people.length,activeCount,inactiveCount:people.length-activeCount,updatedAt:now});
   } catch(error) {

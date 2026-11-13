@@ -10,7 +10,7 @@ export const themes = {
 export const topics = { agradecimento: "Um obrigado", reconhecimento: "Você inspira", "so-porque-sim": "Só porque sim" } as const;
 export type Theme = keyof typeof themes;
 export type Topic = keyof typeof topics;
-export type Person = { name: string; email: string };
+export type Person = { name: string; email: string; department?: string | null };
 export type DirectoryPerson = Person & { active: boolean };
 export const ANONYMOUS_NAME = "Alguém que te deseja bem";
 export type Letter = { senderName: string; senderEmail: string; recipientName: string; recipientEmail: string; message: string; color: Theme; category: Topic; anonymous?: boolean };
@@ -52,6 +52,7 @@ export function parseDirectory(csv: string): DirectoryPerson[] {
   const nameIndex = headers?.indexOf("nome") ?? -1;
   const firstNameIndex = headers?.indexOf("firstname") ?? -1, lastNameIndex = headers?.indexOf("lastname") ?? -1;
   const emailIndex = headers?.includes("email") ? headers.indexOf("email") : headers?.indexOf("emailaddress") ?? -1;
+  const departmentIndex = headers?.indexOf("departamento") ?? -1;
   const statusIndex = headers?.includes("status") ? headers.indexOf("status") : headers?.indexOf("ativo") ?? -1;
   if ((nameIndex < 0 && firstNameIndex < 0) || emailIndex < 0) throw new Error("Use as colunas Nome e E-mail ou a exportação First Name, Last Name e Email Address do Google.");
   if (!rows.length || rows.length > 500) throw new Error("Importe de 1 a 500 colaboradores por lista.");
@@ -64,6 +65,8 @@ export function parseDirectory(csv: string): DirectoryPerson[] {
     const status = statusIndex >= 0 ? normalize(values[statusIndex] || "").trim() : "active";
     if (!["active","ativo","ativa","sim","true","1","suspended","suspenso","suspensa","inativo","inativa","nao","false","0"].includes(status)) throw new Error("Confira o Status ou Ativo na linha " + (i+2) + ".");
     const active = ["active","ativo","ativa","sim","true","1"].includes(status);
-    seen.add(email); return { name: name.trim(), email, active };
+    const department = departmentIndex >= 0 ? (values[departmentIndex] || "").trim() : undefined;
+    if (department !== undefined && (department.length > 120 || /[\u0000-\u001f\u007f]/.test(department))) throw new Error("Confira o Departamento na linha " + (i+2) + ".");
+    seen.add(email); return { name: name.trim(), email, active, ...(department !== undefined ? {department} : {}) };
   });
 }

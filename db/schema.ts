@@ -20,6 +20,7 @@ export const reactions = sqliteTable("reactions", {
 // Preserve legacy data. Its public routes are retired; new messages are never
 // published to, or stored in, the former mural.
 export const staff = sqliteTable("staff", {
+  department: text("department"),
   email: text("email").primaryKey(),
   name: text("name").notNull(),
   searchText: text("search_text").notNull(),

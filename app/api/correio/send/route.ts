@@ -9,8 +9,8 @@ export async function GET(request:Request) {
   const id=new URL(request.url).searchParams.get("id")||"";
   if(!/^[0-9a-f-]{36}$/i.test(id)) return json({error:"Envio inválido."},400);
   try {
-    const result=await store().prepare("SELECT d.status,d.recipient_email AS email,s.name FROM deliveries d LEFT JOIN staff s ON s.email=d.recipient_email WHERE d.id=? AND d.actor=?").bind(id,await digest(user.id)).first<{status:string;email:string;name:string|null}>();
-    return json(result?{status:result.status,recipient:{email:result.email,name:result.name||result.email}}:{status:"not_started"});
+    const result=await store().prepare("SELECT d.status,d.recipient_email AS email,s.name,s.department FROM deliveries d LEFT JOIN staff s ON s.email=d.recipient_email WHERE d.id=? AND d.actor=?").bind(id,await digest(user.id)).first<{status:string;email:string;name:string|null;department:string|null}>();
+    return json(result?{status:result.status,recipient:{email:result.email,name:result.name||result.email,department:result.department}}:{status:"not_started"});
   }catch{return json({error:"Não foi possível conferir o envio agora."},503);}
 }
 export async function POST(request:Request) {
@@ -24,7 +24,7 @@ export async function POST(request:Request) {
   const db=store(),actor=await digest(user.id),payloadHash=await digest(JSON.stringify({...data,senderEmail:user.email}));
   let claimed=false;
   try {
-    const person=await db.prepare("SELECT name,email FROM staff WHERE email=? AND active=1").bind(data.recipientId).first<Person>();
+    const person=await db.prepare("SELECT name,email,department FROM staff WHERE email=? AND active=1").bind(data.recipientId).first<Person>();
     if(!person) return json({error:"Escolha novamente a pessoa na lista de destinatários."},400);
     const existing=await db.prepare("SELECT actor,payload_hash,status FROM deliveries WHERE id=?").bind(data.id).first<Delivery>();
     if(existing) {
